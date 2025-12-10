@@ -1,0 +1,1134 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>Pesca Sonora 3D</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Fuente Pixel Art -->
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --pixel-bg: #2d3436;
+            --pixel-border: #dfe6e9;
+            --pixel-accent: #fab1a0;
+        }
+        
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'VT323', monospace; /* Fuente Pixel Art */
+            touch-action: none; /* Crucial para juegos moviles */
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent; /* Quita el cuadro azul al tocar */
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            max-width: 500px;
+            margin: 0 auto;
+            background: #1a1a1a;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            image-rendering: pixelated; 
+        }
+        
+        canvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        .ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            display: flex; flex-direction: column; justify-content: space-between;
+            padding: 16px; box-sizing: border-box; z-index: 10;
+        }
+
+        .interactive { pointer-events: auto; cursor: pointer; }
+        .interactive:active { transform: scale(0.95); }
+
+        /* Estilo Pixel Art UI */
+        .pixel-panel {
+            background-color: #2d3436;
+            image-rendering: pixelated;
+            border-image-slice: 2;
+            border-image-width: 2;
+            border-image-repeat: stretch;
+            border: 4px solid #fff;
+            box-shadow: 4px 4px 0px rgba(0,0,0,0.5);
+            color: white;
+        }
+
+        .pixel-btn {
+            background: #0984e3;
+            border: none;
+            box-shadow: inset 2px 2px 0px rgba(255,255,255,0.5), inset -2px -2px 0px rgba(0,0,0,0.5), 2px 2px 0px #000;
+            color: white;
+            font-family: 'VT323', monospace;
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: transform 0.05s;
+            text-transform: uppercase;
+        }
+        .pixel-btn:active {
+            transform: translate(2px, 2px);
+            box-shadow: none;
+        }
+        .pixel-btn.red { background: #d63031; }
+        .pixel-btn.green { background: #00b894; }
+        .pixel-btn.yellow { background: #fdcb6e; color: black; }
+        .pixel-btn.gray { background: #636e72; }
+
+        /* Iconos SVG Pixelados custom */
+        .icon-svg {
+            width: 24px; height: 24px;
+            fill: currentColor;
+            display: inline-block;
+            vertical-align: middle;
+            shape-rendering: crispEdges;
+        }
+
+        /* --- PANTALLA DE CARGA --- */
+        #loading-screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-color: #0984e3; /* Azul Mar */
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            pointer-events: auto; /* Asegurar clicks */
+        }
+
+        /* --- MINIJUEGO UI --- */
+        #minigame-ui {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: none; /* Flex cuando activo */
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 30;
+            background: rgba(0,0,0,0.3); /* Fondo semitransparente para enfoque */
+            pointer-events: auto;
+        }
+
+        #mg-area {
+            position: relative;
+            width: 100px; height: 350px;
+            display: flex;
+            flex-direction: row;
+            gap: 4px;
+            margin-bottom: 20px;
+        }
+        
+        #mg-bar-container {
+            position: relative;
+            width: 60px; height: 100%;
+            background: #2d3436;
+            border: 4px solid #fff;
+            box-shadow: 4px 4px 0px rgba(0,0,0,0.5);
+            overflow: hidden; /* Mantener todo dentro */
+        }
+
+        /* La barra verde que controla el jugador */
+        #mg-player-bar {
+            position: absolute;
+            left: 2px;
+            width: calc(100% - 4px);
+            height: 30%; /* Altura base aumentada para ser más fácil */
+            background: #00b894; /* Verde */
+            bottom: 0;
+            border: 2px solid #55efc4;
+            transition: background 0.1s;
+            opacity: 0.8;
+        }
+        #mg-player-bar.catching {
+            background: #fdcb6e; /* Amarillo brillante al capturar */
+            border-color: #ffeaa7;
+            opacity: 1;
+        }
+
+        /* El icono del pez que se mueve solo */
+        #mg-fish-icon {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 40px; height: 40px;
+            bottom: 10%;
+            transition: bottom 0.1s linear;
+            filter: drop-shadow(2px 2px 0px rgba(0,0,0,0.5));
+            z-index: 5;
+        }
+
+        /* Barra de Progreso a la derecha */
+        #mg-progress-container {
+            width: 24px; height: 100%;
+            background: #000;
+            border: 2px solid #fff;
+            position: relative;
+        }
+        #mg-progress-fill {
+            position: absolute;
+            bottom: 0; left: 0; width: 100%; height: 0%;
+            background: linear-gradient(to top, #00b894, #0984e3);
+            transition: height 0.1s;
+        }
+
+        /* Botón Dedicado para REEL */
+        #reel-btn {
+            width: 90px; height: 90px;
+            border-radius: 50%;
+            background: #e17055;
+            border: 4px solid #fff;
+            box-shadow: 0 4px 0 #d63031;
+            color: white;
+            font-size: 1.5rem;
+            font-family: 'VT323', monospace;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            margin-top: 10px;
+            pointer-events: auto; /* Asegurar clicks */
+        }
+        #reel-btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 0 0 #d63031;
+            background: #fab1a0;
+        }
+
+        /* Instrucciones Flotantes */
+        #mg-instructions {
+            position: absolute;
+            top: 15%;
+            width: 100%;
+            text-align: center;
+            color: #fff;
+            text-shadow: 2px 2px 0 #000;
+            font-size: 1.5rem;
+            pointer-events: none;
+        }
+
+        /* Efectos Visuales */
+        .shiny-text {
+            color: #fdcb6e;
+            text-shadow: 2px 2px 0px #d63031;
+            animation: pulse 0.5s infinite alternate;
+        }
+        
+        @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.05); } }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 10px; }
+        ::-webkit-scrollbar-track { background: #2d3436; }
+        ::-webkit-scrollbar-thumb { background: #dfe6e9; border: 2px solid #2d3436; }
+
+        .hidden-ui { display: none !important; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- Pantalla de Carga -->
+    <div id="loading-screen">
+        <h1 class="text-6xl mb-2 text-yellow-300 font-bold tracking-widest text-center leading-none" style="text-shadow: 4px 4px 0 #d63031">PESCA<br>SONORA</h1>
+        <p class="text-xl text-blue-200 mb-8 tracking-wider">Especies de Sonora, México</p>
+        
+        <div id="loading-content" class="flex flex-col items-center">
+            <div class="text-2xl animate-pulse mb-2">Cargando Peces...</div>
+            <div class="w-48 h-4 border-2 border-white p-1 rounded">
+                <div id="loading-bar" class="h-full bg-yellow-400 w-0 transition-all duration-300"></div>
+            </div>
+            <div id="loading-percent" class="mt-2 text-sm">0%</div>
+            
+            <!-- Botón Saltar Carga -->
+            <button id="skip-loading-btn" class="interactive pixel-btn gray mt-6 px-4 py-1 text-lg rounded opacity-80 hover:opacity-100">
+                SALTAR CARGA
+            </button>
+        </div>
+
+        <button id="start-game-btn" class="hidden interactive pixel-btn green px-10 py-4 text-3xl rounded shadow-lg animate-bounce mt-4">
+            ¡A PESCAR!
+        </button>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <!-- UI HUD -->
+    <div id="hud" class="ui-layer">
+        <div class="flex justify-between items-start w-full">
+            <!-- Dinero -->
+            <div class="interactive pixel-panel px-4 py-2 flex items-center gap-2 text-2xl h-12">
+                <!-- Icono Moneda Pixel -->
+                <svg class="icon-svg text-yellow-400" viewBox="0 0 10 10"><path d="M2 1h6v1h1v6h-1v1h-6v-1h-1v-6h1z M4 3v4h2v-4z" fill="currentColor"/></svg>
+                <span id="money-display">0</span>
+            </div>
+            
+            <div class="flex gap-4">
+                <!-- Botón Tienda -->
+                <div class="flex flex-col items-center">
+                    <button id="btn-shop" class="interactive pixel-btn yellow p-2 rounded w-12 h-12 flex items-center justify-center">
+                        <svg class="icon-svg w-8 h-8" viewBox="0 0 10 10"><path d="M1 4h8v5h-8z M2 3h6v1h-6z M4 1h2v2h-2z" fill="currentColor"/></svg>
+                    </button>
+                    <span class="text-white text-sm mt-1 font-bold bg-black/50 px-1 rounded">TIENDA</span>
+                </div>
+                
+                <!-- Botón Inventario -->
+                <div class="flex flex-col items-center">
+                    <button id="btn-inv" class="interactive pixel-btn p-2 rounded w-12 h-12 flex items-center justify-center">
+                        <svg class="icon-svg w-8 h-8" viewBox="0 0 10 10"><path d="M2 3h6v6h-6z M3 1h4v2h-4z M4 4h2v2h-2z" fill="currentColor"/></svg>
+                    </button>
+                    <span class="text-white text-sm mt-1 font-bold bg-black/50 px-1 rounded">MOCHILA</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Botón Acción (Fase Pesca) -->
+        <div class="w-full flex flex-col items-center mb-10 pointer-events-none">
+            <div id="status-msg" class="text-white text-2xl mb-4 bg-black/50 px-4 py-1 rounded hidden">...</div>
+            
+            <button id="action-btn" class="interactive pixel-btn red px-8 py-6 text-3xl rounded shadow-lg w-64 h-24 flex items-center justify-center pointer-events-auto">
+                LANZAR
+            </button>
+            <div id="bait-indicator" class="mt-2 text-white text-lg bg-blue-800 px-2 py-1 rounded hidden border border-white">
+                Cebo Activo: <span class="text-yellow-300">Gusano+</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- UI Minijuego Actualizada (Botón abajo) -->
+    <div id="minigame-ui" class="interactive">
+        <div id="mg-instructions">MANTÉN PRESIONADO<br>PARA SUBIR LA BARRA</div>
+        
+        <div id="mg-area">
+            <div id="mg-bar-container">
+                <!-- El pez que se mueve solo -->
+                <img id="mg-fish-icon" src="">
+                <!-- La barra que controla el jugador -->
+                <div id="mg-player-bar"></div>
+            </div>
+            <div id="mg-progress-container">
+                <div id="mg-progress-fill"></div>
+            </div>
+        </div>
+
+        <!-- Botón dedicado para móviles -->
+        <button id="reel-btn">
+            <div>
+                <svg class="w-8 h-8 mx-auto" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm0 14a6 6 0 110-12 6 6 0 010 12z"/></svg>
+                JALAR
+            </div>
+        </button>
+    </div>
+
+    <!-- Modal Inventario -->
+    <div id="inventory-modal" class="ui-layer hidden-ui interactive bg-black/90 z-40 flex items-center justify-center">
+        <div class="pixel-panel w-full max-w-sm h-5/6 flex flex-col p-4 relative">
+            <button id="btn-close-inv" class="absolute top-2 right-2 text-red-500 hover:text-red-400 font-bold text-2xl p-2">X</button>
+            <h2 class="text-3xl text-center border-b-2 border-white pb-2 mb-4">MOCHILA</h2>
+            <div id="inventory-grid" class="grid grid-cols-3 gap-3 overflow-y-auto p-1"></div>
+            <div id="inventory-empty" class="text-center text-gray-400 mt-10 text-xl">Vacío...</div>
+        </div>
+    </div>
+
+    <!-- Modal Tienda (Venta y Compra) -->
+    <div id="shop-modal" class="ui-layer hidden-ui interactive bg-black/90 z-40 flex items-center justify-center">
+        <div class="pixel-panel w-full max-w-sm h-5/6 flex flex-col p-4 relative">
+            <button id="btn-close-shop" class="absolute top-2 right-2 text-red-500 font-bold text-2xl p-2">X</button>
+            <h2 class="text-3xl text-center text-yellow-400 border-b-2 border-yellow-400 pb-2 mb-2">TIENDA</h2>
+            
+            <!-- Tabs -->
+            <div class="flex w-full mb-2">
+                <button id="tab-sell" class="flex-1 bg-green-600 text-white p-1 hover:bg-green-500">VENDER</button>
+                <button id="tab-buy" class="flex-1 bg-blue-600 text-gray-300 p-1 hover:bg-blue-500">COMPRAR</button>
+            </div>
+
+            <div id="shop-content" class="overflow-y-auto flex-1 p-1">
+                <!-- Contenido dinámico -->
+            </div>
+            
+            <div class="mt-2 border-t-2 border-white pt-2 flex justify-between text-xl">
+                <span>Fondos:</span>
+                <span class="text-yellow-400"><span id="shop-money">0</span> G</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Detalles Pez -->
+    <div id="fish-modal" class="ui-layer hidden-ui interactive bg-black/95 z-50 flex items-center justify-center">
+        <div class="pixel-panel w-10/12 p-6 flex flex-col items-center relative animate-float border-4 border-yellow-400">
+            <div id="fish-modal-title" class="text-yellow-400 text-3xl mb-2">¡ATRAPADO!</div>
+            <div id="fish-shiny-label" class="hidden text-yellow-300 font-bold text-lg animate-pulse mb-2">✨ SHINY ✨</div>
+            <img id="fish-modal-img" src="" class="w-32 h-32 object-contain my-4" style="image-rendering: pixelated;">
+            <h3 id="fish-modal-name" class="text-4xl mb-1 text-white">Nombre</h3>
+            
+            <div class="w-full bg-gray-800 p-2 mb-4 rounded border border-gray-600">
+                <div class="flex justify-between text-lg">
+                    <span class="text-gray-400">Peso:</span>
+                    <span id="fish-modal-weight" class="text-white">0.0 kg</span>
+                </div>
+                <div class="flex justify-between text-lg">
+                    <span class="text-gray-400">Valor:</span>
+                    <span id="fish-modal-price" class="text-green-400">0 G</span>
+                </div>
+                <div class="flex justify-between text-lg">
+                    <span class="text-gray-400">Rareza:</span>
+                    <span id="fish-modal-rarity" class="text-purple-400">Común</span>
+                </div>
+            </div>
+            
+            <p id="fish-modal-desc" class="text-xl text-center text-gray-300 mb-6 italic leading-tight">...</p>
+            <button id="btn-close-fish" class="pixel-btn green px-6 py-2 w-full text-2xl">OK</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- 1. CONFIGURACIÓN DE AUDIO AMBIENTAL ---
+    const ambientSound = new Audio('https://github.com/ItsZenx/Imagen-Resourses/raw/refs/heads/main/Sonido%20del%20Mar.mp3');
+    ambientSound.loop = true;
+    ambientSound.volume = 0.2; // Volumen bajo
+
+    // --- 2. MOTOR DE AUDIO (SFX) ---
+    const AudioEngine = {
+        ctx: null,
+        init: function() {
+            window.AudioContext = window.AudioContext || window.webkitAudioContext;
+            this.ctx = new AudioContext();
+        },
+        playTone: function(freq, type, duration, vol=0.1) {
+            if (!this.ctx) this.init();
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+            gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start();
+            osc.stop(this.ctx.currentTime + duration);
+        },
+        playNoise: function(duration) {
+            if (!this.ctx) this.init();
+            const bufferSize = this.ctx.sampleRate * duration;
+            const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = Math.random() * 2 - 1;
+            }
+            const noise = this.ctx.createBufferSource();
+            noise.buffer = buffer;
+            const gain = this.ctx.createGain();
+            gain.gain.setValueAtTime(0.05, this.ctx.currentTime);
+            gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + duration);
+            noise.connect(gain);
+            gain.connect(this.ctx.destination);
+            noise.start();
+        },
+        // SFX Predefinidos
+        sfxClick: () => { if (AudioEngine.ctx) AudioEngine.playTone(600, 'square', 0.1); },
+        sfxCast: () => { if (AudioEngine.ctx) { AudioEngine.playTone(300, 'triangle', 0.1); AudioEngine.playTone(500, 'triangle', 0.2); } },
+        sfxSplash: () => { if (AudioEngine.ctx) AudioEngine.playNoise(0.5); },
+        sfxBite: () => { if (AudioEngine.ctx) { AudioEngine.playTone(800, 'square', 0.1, 0.2); setTimeout(() => AudioEngine.playTone(800, 'square', 0.1, 0.2), 150); } },
+        sfxWin: () => { if (AudioEngine.ctx) [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => AudioEngine.playTone(f, 'square', 0.2, 0.2), i*100)); },
+        sfxFail: () => { if (AudioEngine.ctx) { AudioEngine.playTone(150, 'sawtooth', 0.4); setTimeout(() => AudioEngine.playTone(100, 'sawtooth', 0.4), 200); } },
+        sfxReel: () => { if (AudioEngine.ctx) AudioEngine.playTone(100 + Math.random()*50, 'sawtooth', 0.05, 0.05); }
+    };
+
+    // --- 3. HELPER PARA BOTONES MÓVILES ---
+    // Esta función conecta touchstart para respuesta inmediata y click como fallback
+    function bindButton(id, callback) {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        
+        // Touch: prevenimos default para evitar delays y ghost clicks, ejecutamos callback directo
+        btn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            e.stopPropagation(); // Evitar que pase a capas inferiores
+            callback(e);
+        }, { passive: false });
+        
+        // Click: para PC
+        btn.addEventListener('click', (e) => {
+            callback(e);
+        });
+    }
+
+    // --- 4. CONFIGURACIÓN DEL JUEGO ---
+    const FISH_DB = [
+        { id: 'lisa', name: 'Lisa', basePrice: 15, rarity: 'Común', desc: 'Nada en la superficie.', img: 'https://github.com/ItsZenx/Imagen-Resourses/blob/main/fishes/lisa.png?raw=true', prob: 20 },
+        { id: 'pargo', name: 'Pargo', basePrice: 45, rarity: 'Poco Común', desc: 'Rojizo y delicioso.', img: 'https://github.com/ItsZenx/Imagen-Resourses/blob/main/fishes/pargo.png?raw=true', prob: 15 },
+        { id: 'curbina', name: 'Curbina', basePrice: 30, rarity: 'Común', desc: 'Hace ruidos de tambor.', img: 'https://github.com/ItsZenx/Imagen-Resourses/blob/main/fishes/curbina.png?raw=true', prob: 18 },
+        { id: 'rocacho', name: 'Rocacho', basePrice: 25, rarity: 'Común', desc: 'Pez de roca duro.', img: 'https://github.com/ItsZenx/Imagen-Resourses/blob/main/fishes/roncacho.png?raw=true', prob: 15 },
+        { id: 'tilapia', name: 'Tilapia', basePrice: 10, rarity: 'Muy Común', desc: 'Abundante y resistente.', img: 'https://github.com/ItsZenx/Imagen-Resourses/blob/main/fishes/tilapia.png?raw=true', prob: 25 },
+        { id: 'constantino', name: 'Constantino', basePrice: 60, rarity: 'Raro', desc: 'Hermoso pez de acuario.', img: 'https://github.com/ItsZenx/Imagen-Resourses/blob/main/fishes/constantino.png?raw=true', prob: 8 },
+        { id: 'robalo', name: 'Robalo', basePrice: 50, rarity: 'Poco Común', desc: 'Luchador fuerte.', img: 'https://github.com/ItsZenx/Imagen-Resourses/blob/main/fishes/robalo.png?raw=true', prob: 12 },
+        { id: 'mantaraya', name: 'Mantaraya', basePrice: 80, rarity: 'Raro', desc: 'Plana y majestuosa.', img: 'https://github.com/ItsZenx/Imagen-Resourses/blob/main/fishes/mantarraya.png?raw=true', prob: 5 },
+        { id: 'camaron', name: 'Camarón', basePrice: 5, rarity: 'Muy Común', desc: 'Pequeño aperitivo.', img: 'https://github.com/ItsZenx/Imagen-Resourses/blob/main/fishes/camaron.png?raw=true', prob: 30 },
+        { id: 'jaiba', name: 'Jaiba', basePrice: 20, rarity: 'Común', desc: 'Cuidado con las pinzas.', img: 'https://github.com/ItsZenx/Imagen-Resourses/blob/main/fishes/Jaiba.png?raw=true', prob: 20 },
+        { id: 'langosta', name: 'Langosta', basePrice: 200, rarity: 'Legendario', desc: 'El rey de la cena.', img: 'https://github.com/ItsZenx/Imagen-Resourses/blob/main/fishes/Langosta.png?raw=true', prob: 2 },
+        { id: 'tiburon', name: 'Tiburón', basePrice: 500, rarity: 'Mítico', desc: 'Depredador supremo.', img: 'https://github.com/ItsZenx/Imagen-Resourses/blob/main/fishes/Tiburon.png?raw=true', prob: 1 }
+    ];
+
+    const ITEMS_DB = {
+        'bait_worm': { name: 'Gusano+', price: 50, type: 'bait', desc: 'Atrae peces más raros.', bonus: 1.5 },
+        'bait_shiny': { name: 'Brillocangrejo', price: 150, type: 'bait', desc: 'Alta prob. de Shiny.', bonus: 4.0 }, 
+        'rod_fiber': { name: 'Caña Fibra', price: 500, type: 'rod', desc: 'Zona segura más grande.' },
+        'rod_carbon': { name: 'Caña Carbono', price: 1500, type: 'rod', desc: 'La barra sube más estable.' }
+    };
+
+    let gameState = {
+        money: 0,
+        inventory: [],
+        status: 'IDLE', 
+        rodLevel: 1, 
+        activeBait: null, 
+        currentFish: null, 
+        minigame: {
+            playerBarPos: 0, 
+            fishPos: 0,      
+            progress: 30,    
+            barHeight: 30,   
+            fishVelocity: 0,
+            playerVelocity: 0,
+            fishTarget: 50,  
+            isPulling: false 
+        },
+        timers: {}
+    };
+
+    // --- 5. LÓGICA DE CARGA ---
+    let loadedAssets = 0;
+    const totalAssets = FISH_DB.length;
+
+    // Precarga
+    FISH_DB.forEach(fish => {
+        const img = new Image();
+        img.src = fish.img;
+        img.onload = () => { loadedAssets++; updateLoading(); };
+        img.onerror = () => { loadedAssets++; updateLoading(); };
+    });
+
+    function updateLoading() {
+        const pct = Math.floor((loadedAssets / totalAssets) * 100);
+        document.getElementById('loading-bar').style.width = pct + '%';
+        document.getElementById('loading-percent').innerText = pct + '%';
+
+        if (loadedAssets >= totalAssets) {
+            setTimeout(showStartButton, 500);
+        }
+    }
+
+    function showStartButton() {
+        document.getElementById('loading-content').classList.add('hidden');
+        document.getElementById('start-game-btn').classList.remove('hidden');
+    }
+
+    // --- 6. CONTROLES DE UI (CON BIND TOUCH) ---
+    
+    // Configurar botones de carga
+    bindButton('skip-loading-btn', () => showStartButton());
+    
+    bindButton('start-game-btn', () => {
+        document.getElementById('loading-screen').style.display = 'none';
+        ambientSound.play().catch(e => {});
+        AudioEngine.init();
+    });
+
+    // Botones de Menú
+    bindButton('btn-shop', () => toggleShop());
+    bindButton('btn-inv', () => toggleInventory());
+    
+    // Botones de Cierre
+    bindButton('btn-close-shop', () => toggleShop());
+    bindButton('btn-close-inv', () => toggleInventory());
+    bindButton('btn-close-fish', () => closeFishModal());
+
+    // Botones de Tab Tienda
+    bindButton('tab-sell', () => setShopTab('sell'));
+    bindButton('tab-buy', () => setShopTab('buy'));
+
+    // Botón de Acción Principal (Lanzar)
+    const actionBtn = document.getElementById('action-btn');
+    actionBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        handleInputStart();
+    }, {passive: false});
+    actionBtn.addEventListener('mousedown', handleInputStart);
+
+    // Botón Reel (Jalar) en Minijuego
+    const reelBtn = document.getElementById('reel-btn');
+    
+    reelBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        if (gameState.status === 'REELING') gameState.minigame.isPulling = true;
+    }, {passive: false});
+    
+    reelBtn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        if (gameState.status === 'REELING') gameState.minigame.isPulling = false;
+    });
+
+    reelBtn.addEventListener('mousedown', () => {
+        if (gameState.status === 'REELING') gameState.minigame.isPulling = true;
+    });
+    
+    window.addEventListener('mouseup', () => {
+        if (gameState.status === 'REELING') gameState.minigame.isPulling = false;
+    });
+
+    // --- LÓGICA DE JUEGO ---
+
+    function handleInputStart() {
+        AudioEngine.sfxClick();
+        if (gameState.status === 'IDLE') {
+            startCast();
+        } else if (gameState.status === 'WAITING') {
+            cancelCast();
+        } else if (gameState.status === 'BITING') {
+            startMinigame();
+        }
+    }
+
+    function startCast() {
+        gameState.status = 'CASTING';
+        actionBtn.innerText = "CANCELAR";
+        actionBtn.className = "interactive pixel-btn yellow px-8 py-6 text-3xl rounded shadow-lg w-64 h-24 flex items-center justify-center";
+        
+        bobber.visible = true;
+        bobber.position.set(0, 5, 5);
+        
+        let t = 0;
+        AudioEngine.sfxCast();
+        const castInt = setInterval(() => {
+            t += 0.05;
+            bobber.position.y = 5 - (5 * t * t);
+            bobber.position.z -= 0.1;
+            
+            if (bobber.position.y <= 0) {
+                clearInterval(castInt);
+                AudioEngine.sfxSplash();
+                gameState.status = 'WAITING';
+                document.getElementById('status-msg').innerText = "Esperando...";
+                document.getElementById('status-msg').classList.remove('hidden');
+                
+                const wait = 2000 + Math.random() * 4000;
+                gameState.timers.bite = setTimeout(triggerBite, wait);
+            }
+        }, 16);
+    }
+
+    function cancelCast() {
+        clearTimeout(gameState.timers.bite);
+        clearTimeout(gameState.timers.reaction);
+        resetState();
+    }
+
+    function triggerBite() {
+        if(gameState.status !== 'WAITING') return;
+        
+        gameState.status = 'BITING';
+        AudioEngine.sfxBite();
+        const msg = document.getElementById('status-msg');
+        msg.innerText = "¡PICÓ! ¡TOCA!";
+        msg.classList.add('text-red-500', 'animate-pulse');
+        actionBtn.innerText = "¡JALAR!";
+        actionBtn.className = "interactive pixel-btn green px-8 py-6 text-3xl rounded shadow-lg w-64 h-24 animate-pulse flex items-center justify-center";
+        
+        gameState.timers.reaction = setTimeout(() => {
+            if(gameState.status === 'BITING') {
+                msg.innerText = "Se escapó...";
+                AudioEngine.sfxFail();
+                resetState();
+            }
+        }, 1500); 
+    }
+
+    function startMinigame() {
+        clearTimeout(gameState.timers.reaction);
+        gameState.status = 'REELING';
+        
+        const fish = determineFish();
+        gameState.currentFish = fish;
+        
+        let barH = 30; 
+        if (gameState.rodLevel === 2) barH = 40; 
+        if (gameState.rodLevel === 3) barH = 50; 
+
+        gameState.minigame = {
+            playerBarPos: 10,
+            fishPos: 20,      
+            progress: 30,     
+            barHeight: barH,
+            fishVelocity: 0,
+            playerVelocity: 0,
+            fishTarget: 50,
+            fishTimer: 0,     
+            difficulty: fish.rarity === 'Legendario' ? 2.0 : (fish.rarity === 'Raro' ? 1.2 : 0.6),
+            isPulling: false  
+        };
+
+        document.getElementById('minigame-ui').style.display = 'flex';
+        document.getElementById('mg-fish-icon').src = fish.img; 
+        document.getElementById('mg-player-bar').style.height = barH + '%';
+        
+        actionBtn.classList.add('hidden'); 
+        document.getElementById('status-msg').classList.add('hidden');
+
+        requestAnimationFrame(updateMinigame);
+    }
+
+    function updateMinigame() {
+        if (gameState.status !== 'REELING') return;
+
+        const mg = gameState.minigame;
+
+        // Física Barra Jugador
+        if (mg.isPulling) {
+            mg.playerVelocity += 0.35; 
+        } else {
+            mg.playerVelocity -= 0.25; 
+        }
+
+        mg.playerVelocity *= 0.92; 
+        mg.playerBarPos += mg.playerVelocity;
+
+        if (mg.playerBarPos < 0) {
+            mg.playerBarPos = 0;
+            mg.playerVelocity = 0;
+        }
+        if (mg.playerBarPos > (100 - mg.barHeight)) {
+            mg.playerBarPos = 100 - mg.barHeight;
+            mg.playerVelocity = 0;
+        }
+
+        // IA Pez
+        mg.fishTimer++;
+        if (mg.fishTimer > 40 + Math.random() * 60) { 
+            mg.fishTimer = 0;
+            mg.fishTarget = Math.random() * 80 + 10; 
+        }
+
+        const diff = mg.fishTarget - mg.fishPos;
+        mg.fishVelocity += diff * 0.005 * mg.difficulty;
+        mg.fishVelocity *= 0.9;
+        
+        if (mg.difficulty > 1.5 && Math.random() > 0.95) {
+             mg.fishVelocity += (Math.random() - 0.5) * 3;
+        }
+
+        mg.fishPos += mg.fishVelocity;
+        
+        if (mg.fishPos < 0) { mg.fishPos = 0; mg.fishVelocity *= -0.5; }
+        if (mg.fishPos > 90) { mg.fishPos = 90; mg.fishVelocity *= -0.5; }
+
+        // Colisión
+        const fishCenter = mg.fishPos + 4;
+        const barBottom = mg.playerBarPos;
+        const barTop = mg.playerBarPos + mg.barHeight;
+
+        const isCatching = fishCenter >= barBottom && fishCenter <= barTop;
+
+        if (isCatching) {
+            mg.progress += 0.3; 
+            document.getElementById('mg-player-bar').classList.add('catching');
+            if(Math.random() > 0.95) AudioEngine.sfxReel();
+        } else {
+            mg.progress -= 0.15; 
+            document.getElementById('mg-player-bar').classList.remove('catching');
+        }
+
+        if (mg.progress < 0) mg.progress = 0;
+        if (mg.progress > 100) mg.progress = 100;
+
+        // UI
+        document.getElementById('mg-player-bar').style.bottom = mg.playerBarPos + '%';
+        document.getElementById('mg-fish-icon').style.bottom = mg.fishPos + '%';
+        document.getElementById('mg-progress-fill').style.height = mg.progress + '%';
+
+        // Win/Loss
+        if (mg.progress >= 100) {
+            catchSuccess();
+            return;
+        }
+        if (mg.progress <= 0) {
+            catchFail("¡Se escapó!");
+            return;
+        }
+
+        requestAnimationFrame(updateMinigame);
+    }
+
+    function catchSuccess() {
+        AudioEngine.sfxWin();
+        const fish = gameState.currentFish;
+        gameState.inventory.push(fish);
+        showFishModal(fish);
+        resetState(false);
+    }
+
+    function catchFail(reason) {
+        AudioEngine.sfxFail();
+        const msg = document.getElementById('status-msg');
+        msg.innerText = reason;
+        msg.classList.remove('hidden');
+        resetState();
+    }
+
+    function determineFish() {
+        let pool = [...FISH_DB];
+        
+        const totalW = pool.reduce((a,b) => a + b.prob, 0);
+        let r = Math.random() * totalW;
+        let selected = pool[0];
+        for(let f of pool) {
+            if(r < f.prob) { selected = f; break; }
+            r -= f.prob;
+        }
+
+        const sizeMult = 0.8 + Math.random() * 0.7;
+        const isShiny = Math.random() < 0.05 || (gameState.activeBait === 'bait_shiny' && Math.random() < 0.2);
+        
+        const finalPrice = Math.floor(selected.basePrice * sizeMult * (isShiny ? 3 : 1));
+        const weight = (sizeMult * 2).toFixed(2); 
+
+        if(gameState.activeBait) {
+            document.getElementById('bait-indicator').classList.add('hidden');
+            gameState.activeBait = null;
+        }
+
+        return {
+            ...selected,
+            finalPrice: finalPrice,
+            weight: weight,
+            isShiny: isShiny,
+            uniqueId: Date.now()
+        };
+    }
+
+    function resetState(fullReset = true) {
+        gameState.status = 'IDLE';
+        document.getElementById('minigame-ui').style.display = 'none';
+        bobber.visible = false;
+        
+        actionBtn.classList.remove('hidden');
+        
+        if (fullReset) {
+            actionBtn.innerText = "LANZAR";
+            actionBtn.className = "interactive pixel-btn red px-8 py-6 text-3xl rounded shadow-lg w-64 h-24 flex items-center justify-center";
+            const msg = document.getElementById('status-msg');
+            msg.innerText = "";
+            msg.classList.add('hidden');
+        }
+    }
+
+    // --- FUNCIONES DE UI ---
+    let currentShopTab = 'sell';
+
+    function toggleInventory() {
+        AudioEngine.sfxClick();
+        const modal = document.getElementById('inventory-modal');
+        const grid = document.getElementById('inventory-grid');
+        const empty = document.getElementById('inventory-empty');
+        
+        if (modal.classList.contains('hidden-ui')) {
+            modal.classList.remove('hidden-ui');
+            renderInventory(grid, empty);
+        } else {
+            modal.classList.add('hidden-ui');
+        }
+    }
+
+    function renderInventory(grid, emptyMsg) {
+        grid.innerHTML = '';
+        if (gameState.inventory.length === 0) {
+            emptyMsg.style.display = 'block';
+            return;
+        }
+        emptyMsg.style.display = 'none';
+
+        gameState.inventory.forEach(fish => {
+            const div = document.createElement('div');
+            div.className = `pixel-panel p-2 flex flex-col items-center cursor-pointer hover:bg-gray-700 ${fish.isShiny ? 'border-yellow-400 bg-yellow-900/30' : ''}`;
+            div.innerHTML = `
+                <img src="${fish.img}" class="w-10 h-10 object-contain mb-1" style="image-rendering: pixelated;">
+                <span class="text-xs">${fish.name}</span>
+                <span class="text-xs text-green-400">${fish.finalPrice}G</span>
+            `;
+            grid.appendChild(div);
+        });
+    }
+
+    function toggleShop() {
+        AudioEngine.sfxClick();
+        const modal = document.getElementById('shop-modal');
+        if (modal.classList.contains('hidden-ui')) {
+            modal.classList.remove('hidden-ui');
+            setShopTab('sell');
+        } else {
+            modal.classList.add('hidden-ui');
+        }
+    }
+
+    function setShopTab(tab) {
+        currentShopTab = tab;
+        document.getElementById('tab-sell').className = `flex-1 p-1 ${tab === 'sell' ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-400'}`;
+        document.getElementById('tab-buy').className = `flex-1 p-1 ${tab === 'buy' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400'}`;
+        renderShop();
+    }
+
+    function renderShop() {
+        const content = document.getElementById('shop-content');
+        document.getElementById('shop-money').innerText = gameState.money;
+        content.innerHTML = '';
+
+        if (currentShopTab === 'sell') {
+            if (gameState.inventory.length === 0) {
+                content.innerHTML = '<div class="text-center mt-10 text-gray-500">Nada para vender.</div>';
+                return;
+            }
+            const sellAllBtn = document.createElement('button');
+            sellAllBtn.className = "w-full pixel-btn green mb-2 py-1";
+            sellAllBtn.innerText = "VENDER TODO";
+            // Touch binding manual para botones generados dinamicamente
+            sellAllBtn.addEventListener('touchstart', (e) => { e.preventDefault(); sellAll(e); }, {passive: false});
+            sellAllBtn.addEventListener('click', sellAll);
+            content.appendChild(sellAllBtn);
+
+            gameState.inventory.forEach((fish, idx) => {
+                const row = document.createElement('div');
+                row.className = "flex justify-between items-center bg-gray-800 p-2 mb-1 border border-gray-600";
+                row.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <img src="${fish.img}" class="w-8 h-8 object-contain">
+                        <div class="flex flex-col">
+                            <span class="${fish.isShiny ? 'text-yellow-400' : 'text-white'} text-sm">${fish.name}</span>
+                            <span class="text-xs text-green-300">${fish.finalPrice} G</span>
+                        </div>
+                    </div>
+                `;
+                const btn = document.createElement('button');
+                btn.className = "pixel-btn green text-xs px-2";
+                btn.innerText = "$";
+                const doSell = (e) => {
+                    gameState.money += fish.finalPrice;
+                    gameState.inventory.splice(idx, 1);
+                    AudioEngine.sfxClick();
+                    renderShop();
+                };
+                btn.addEventListener('touchstart', (e) => { e.preventDefault(); doSell(e); }, {passive: false});
+                btn.addEventListener('click', doSell);
+                
+                row.appendChild(btn);
+                content.appendChild(row);
+            });
+        } else {
+            Object.keys(ITEMS_DB).forEach(key => {
+                const item = ITEMS_DB[key];
+                const row = document.createElement('div');
+                row.className = "bg-gray-800 p-2 mb-2 border border-blue-500";
+                
+                let alreadyOwned = false;
+                if (item.type === 'rod') {
+                    if ((key === 'rod_fiber' && gameState.rodLevel >= 2) || (key === 'rod_carbon' && gameState.rodLevel >= 3)) alreadyOwned = true;
+                }
+
+                row.innerHTML = `
+                    <div class="flex justify-between mb-1">
+                        <span class="text-blue-300 font-bold">${item.name}</span>
+                        <span class="text-yellow-400">${item.price} G</span>
+                    </div>
+                    <div class="text-xs text-gray-400 mb-2">${item.desc}</div>
+                `;
+                
+                const buyBtn = document.createElement('button');
+                buyBtn.className = `w-full pixel-btn ${alreadyOwned ? 'bg-gray-600 cursor-not-allowed' : (gameState.money >= item.price ? 'blue' : 'bg-red-900 text-gray-400')}`;
+                buyBtn.innerText = alreadyOwned ? "COMPRADO" : (gameState.money >= item.price ? "COMPRAR" : "FALTA ORO");
+                buyBtn.disabled = alreadyOwned || gameState.money < item.price;
+                
+                const doBuy = () => buyItem(key);
+                if(!buyBtn.disabled) {
+                    buyBtn.addEventListener('touchstart', (e) => { e.preventDefault(); doBuy(); }, {passive: false});
+                    buyBtn.addEventListener('click', doBuy);
+                }
+
+                row.appendChild(buyBtn);
+                content.appendChild(row);
+            });
+        }
+    }
+
+    function sellAll() {
+        let total = 0;
+        gameState.inventory.forEach(f => total += f.finalPrice);
+        gameState.money += total;
+        gameState.inventory = [];
+        AudioEngine.sfxClick();
+        renderShop();
+    }
+
+    function buyItem(key) {
+        const item = ITEMS_DB[key];
+        if (gameState.money >= item.price) {
+            gameState.money -= item.price;
+            AudioEngine.sfxWin(); 
+            
+            if (item.type === 'bait') {
+                gameState.activeBait = key;
+                const ind = document.getElementById('bait-indicator');
+                ind.classList.remove('hidden');
+                ind.querySelector('span').innerText = item.name;
+                toggleShop(); 
+            } else if (item.type === 'rod') {
+                if (key === 'rod_fiber') gameState.rodLevel = 2;
+                if (key === 'rod_carbon') gameState.rodLevel = 3;
+                renderShop();
+            }
+        } else {
+            AudioEngine.sfxFail();
+        }
+    }
+
+    function showFishModal(fish) {
+        const modal = document.getElementById('fish-modal');
+        document.getElementById('fish-modal-img').src = fish.img;
+        document.getElementById('fish-modal-name').innerText = fish.name;
+        document.getElementById('fish-modal-price').innerText = fish.finalPrice + " G";
+        document.getElementById('fish-modal-weight').innerText = fish.weight + " kg";
+        document.getElementById('fish-modal-rarity').innerText = fish.rarity;
+        document.getElementById('fish-modal-desc').innerText = fish.desc;
+        
+        const shinyLbl = document.getElementById('fish-shiny-label');
+        if (fish.isShiny) shinyLbl.classList.remove('hidden');
+        else shinyLbl.classList.add('hidden');
+
+        modal.classList.remove('hidden-ui');
+    }
+
+    function closeFishModal() {
+        document.getElementById('fish-modal').classList.add('hidden-ui');
+        setTimeout(() => {
+             actionBtn.innerText = "LANZAR";
+             actionBtn.className = "interactive pixel-btn red px-8 py-6 text-3xl rounded shadow-lg w-64 h-24 flex items-center justify-center";
+        }, 100);
+    }
+
+    // --- THREE.JS SCENE ---
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x87CEEB, 0.02);
+    scene.background = new THREE.Color(0x87CEEB);
+
+    const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
+    camera.position.set(0, 6, 12);
+    camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: false });
+    const pixelRatio = 4; 
+    renderer.setSize(container.clientWidth / pixelRatio, container.clientHeight / pixelRatio, false);
+    container.appendChild(renderer.domElement);
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    scene.add(ambientLight);
+    const dirLight = new THREE.DirectionalLight(0xffd700, 0.8);
+    dirLight.position.set(10, 20, 10);
+    scene.add(dirLight);
+
+    // Agua
+    const waterVertexShader = `
+        uniform float uTime;
+        varying vec2 vUv;
+        varying float vElevation;
+        void main() {
+            vUv = uv;
+            vec3 pos = position;
+            float y = sin(pos.x * 0.5 + uTime * 0.8) * 0.5;
+            y += sin(pos.x * 1.5 + uTime * 1.2) * 0.2;
+            y += cos(pos.y * 0.8 + uTime * 0.5) * 0.3;
+            y += sin(pos.x * 3.0 + pos.y * 2.0 + uTime * 2.0) * 0.1; 
+            y = y + (sin(y * 3.0) * 0.2);
+            pos.z += y; 
+            vElevation = y;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+        }
+    `;
+    const waterFragmentShader = `
+        uniform float uTime;
+        varying float vElevation;
+        varying vec2 vUv;
+        void main() {
+            vec3 deep = vec3(0.1, 0.3, 0.6);
+            vec3 shallow = vec3(0.0, 0.7, 0.9);
+            vec3 foam = vec3(0.9, 0.95, 1.0);
+            float mixVal = smoothstep(-0.5, 0.8, vElevation);
+            vec3 col = mix(deep, shallow, mixVal);
+            if(vElevation > 0.45) col = foam;
+            else if (vElevation > 0.4 && mod(gl_FragCoord.x + gl_FragCoord.y, 4.0) < 2.0) col = foam;
+            gl_FragColor = vec4(col, 1.0);
+        }
+    `;
+    const waterMat = new THREE.ShaderMaterial({
+        vertexShader: waterVertexShader,
+        fragmentShader: waterFragmentShader,
+        uniforms: { uTime: { value: 0 } },
+        side: THREE.DoubleSide
+    });
+    const waterMesh = new THREE.Mesh(new THREE.PlaneGeometry(40, 40, 64, 64), waterMat);
+    waterMesh.rotation.x = -Math.PI / 2;
+    scene.add(waterMesh);
+
+    // Boya
+    const bobber = new THREE.Group();
+    const bMatR = new THREE.MeshLambertMaterial({color: 0xff4757});
+    const bMatW = new THREE.MeshLambertMaterial({color: 0xffffff});
+    const bGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+    const topB = new THREE.Mesh(bGeo, bMatR); topB.position.y = 0.15;
+    const botB = new THREE.Mesh(bGeo, bMatW); botB.position.y = -0.15;
+    bobber.add(topB); bobber.add(botB);
+    bobber.visible = false;
+    scene.add(bobber);
+
+    const clock = new THREE.Clock();
+    function animate() {
+        requestAnimationFrame(animate);
+        const t = clock.getElapsedTime();
+        waterMat.uniforms.uTime.value = t;
+        if (gameState.status === 'WAITING') bobber.position.y = Math.sin(t * 3) * 0.1;
+        else if (gameState.status === 'BITING') {
+            bobber.position.y = (Math.sin(t * 20) * 0.15) - 0.1;
+            bobber.position.x = (Math.random() - 0.5) * 0.1;
+        }
+        renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w / pixelRatio, h / pixelRatio, false);
+    });
+
+</script>
+</body>
+</html>
